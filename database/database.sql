@@ -35,12 +35,13 @@ CREATE TABLE `Causes` (
 
 CREATE TABLE `Donations` (
   `donation_id` INT(11) NOT NULL AUTO_INCREMENT,
-  `cause_id` INT(11) NOT NULL,
+  `cause_id` INT(11) NULL,
   `donor_name` VARCHAR(100) DEFAULT 'Anonim',
   `donor_email` VARCHAR(100) DEFAULT NULL,
   `amount` DECIMAL(10, 2) NOT NULL,
   `donation_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `payment_method` VARCHAR(50) NOT NULL,
+  `frequency` VARCHAR(50) DEFAULT NULL,
   `is_anonymous` BOOLEAN NOT NULL DEFAULT FALSE,
   PRIMARY KEY (`donation_id`),
   FOREIGN KEY (`cause_id`) REFERENCES `Causes`(`cause_id`) ON DELETE RESTRICT ON UPDATE CASCADE

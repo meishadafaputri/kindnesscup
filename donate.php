@@ -6,6 +6,42 @@
 session_start();
 $message = '';
 
+// DB connection params - adjust as needed
+$dbHost = '127.0.0.1';
+$dbName = 'kindnesscup';
+$dbUser = 'root';
+$dbPass = '';
+
+$pdo = null;
+$hasCauses = false;
+try {
+    $dsn = "mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4";
+    $pdo = new PDO($dsn, $dbUser, $dbPass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+    ]);
+    // detect Causes table
+    try {
+        $hasCauses = $pdo->query("SHOW TABLES LIKE 'Causes'")->rowCount() > 0;
+    } catch (PDOException $e) {
+        $hasCauses = false;
+    }
+} catch (PDOException $ex) {
+    // leave $pdo null; form will still render but without causes
+    $pdo = null;
+}
+
+// fetch causes for the form (if available)
+$causes = [];
+if ($pdo && $hasCauses) {
+    try {
+        $stmtCauses = $pdo->query("SELECT cause_id, title FROM Causes WHERE is_active=1 ORDER BY title ASC");
+        $causes = $stmtCauses->fetchAll();
+    } catch (PDOException $e) {
+        $causes = [];
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Simple sanitization and extraction
     $donation_frequency = isset($_POST['DonationFrequency']) ? trim($_POST['DonationFrequency']) : 'one_time';
@@ -42,6 +78,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Please choose a payment method.';
     }
 
+    // Validate cause_id if provided
+    $cause_id = null;
+    if (isset($_POST['cause_id']) && $_POST['cause_id'] !== '') {
+        $cid = $_POST['cause_id'];
+        if (is_numeric($cid)) {
+            $cid = (int) $cid;
+            if ($pdo && $hasCauses) {
+                try {
+                    $c = $pdo->prepare('SELECT COUNT(*) FROM Causes WHERE cause_id = :id AND is_active = 1');
+                    $c->execute([':id' => $cid]);
+                    if ($c->fetchColumn() > 0) {
+                        $cause_id = $cid;
+                    }
+                } catch (PDOException $e) {
+                    // ignore
+                }
+            }
+        }
+    }
+
     if (empty($errors)) {
         // DB connection params - adjust as needed
         $dbHost = '127.0.0.1';
@@ -50,30 +106,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dbPass = '';
 
         try {
-            $dsn = "mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4";
-            $pdo = new PDO($dsn, $dbUser, $dbPass, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ]);
+            if (!$pdo) {
+                // try to create a connection if it wasn't opened earlier
+                $dsn = "mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4";
+                $pdo = new PDO($dsn, $dbUser, $dbPass, [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+                ]);
+            }
 
-            // Create a lightweight table for web donations if it doesn't exist
-            $createSql = "CREATE TABLE IF NOT EXISTS `DonationsWeb` (
-                `donation_id` INT(11) NOT NULL AUTO_INCREMENT,
-                `donor_name` VARCHAR(100) DEFAULT 'Anonim',
-                `donor_email` VARCHAR(100) DEFAULT NULL,
-                `amount` DECIMAL(10,2) NOT NULL,
-                `donation_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `payment_method` VARCHAR(50) NOT NULL,
-                `frequency` VARCHAR(50) DEFAULT NULL,
-                `is_anonymous` TINYINT(1) NOT NULL DEFAULT 0,
-                PRIMARY KEY (`donation_id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-            $pdo->exec($createSql);
+            // Ensure `Donations` table exists. If Causes table exists, include FK.
+            if ($hasCauses) {
+                $createDonationsSql = "CREATE TABLE IF NOT EXISTS `Donations` (
+                    `donation_id` INT(11) NOT NULL AUTO_INCREMENT,
+                    `cause_id` INT(11) NULL,
+                    `donor_name` VARCHAR(100) DEFAULT 'Anonim',
+                    `donor_email` VARCHAR(100) DEFAULT NULL,
+                    `amount` DECIMAL(10,2) NOT NULL,
+                    `donation_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `payment_method` VARCHAR(50) NOT NULL,
+                    `frequency` VARCHAR(50) DEFAULT NULL,
+                    `is_anonymous` TINYINT(1) NOT NULL DEFAULT 0,
+                    PRIMARY KEY (`donation_id`),
+                    INDEX (`cause_id`),
+                    CONSTRAINT `fk_donations_causes` FOREIGN KEY (`cause_id`) REFERENCES `Causes`(`cause_id`) ON DELETE SET NULL ON UPDATE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            } else {
+                $createDonationsSql = "CREATE TABLE IF NOT EXISTS `Donations` (
+                    `donation_id` INT(11) NOT NULL AUTO_INCREMENT,
+                    `cause_id` INT(11) NULL,
+                    `donor_name` VARCHAR(100) DEFAULT 'Anonim',
+                    `donor_email` VARCHAR(100) DEFAULT NULL,
+                    `amount` DECIMAL(10,2) NOT NULL,
+                    `donation_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `payment_method` VARCHAR(50) NOT NULL,
+                    `frequency` VARCHAR(50) DEFAULT NULL,
+                    `is_anonymous` TINYINT(1) NOT NULL DEFAULT 0,
+                    PRIMARY KEY (`donation_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+            }
+            $pdo->exec($createDonationsSql);
 
-            $insertSql = "INSERT INTO DonationsWeb (donor_name, donor_email, amount, payment_method, frequency, is_anonymous)
-                          VALUES (:donor_name, :donor_email, :amount, :payment_method, :frequency, :is_anonymous)";
+            // If older DonationsWeb table exists and Donations is empty, migrate data.
+            try {
+                $hasWeb = $pdo->query("SHOW TABLES LIKE 'DonationsWeb'")->rowCount() > 0;
+            } catch (PDOException $e) {
+                $hasWeb = false;
+            }
+            if ($hasWeb) {
+                try {
+                    $countDon = $pdo->query("SELECT COUNT(*) AS c FROM Donations")->fetchColumn();
+                    if ($countDon == 0) {
+                        $migrateSql = "INSERT INTO Donations (cause_id, donor_name, donor_email, amount, donation_date, payment_method, frequency, is_anonymous)
+                                       SELECT NULL, donor_name, donor_email, amount, donation_date, payment_method, frequency, is_anonymous FROM DonationsWeb";
+                        $pdo->exec($migrateSql);
+                    }
+                } catch (PDOException $e) {
+                    // ignore migration errors
+                }
+            }
+
+            $insertSql = "INSERT INTO Donations (cause_id, donor_name, donor_email, amount, payment_method, frequency, is_anonymous)
+                          VALUES (:cause_id, :donor_name, :donor_email, :amount, :payment_method, :frequency, :is_anonymous)";
             $stmt = $pdo->prepare($insertSql);
             $stmt->execute([
+                ':cause_id' => $cause_id,
                 ':donor_name' => $is_anonymous ? 'Anonim' : $donor_name,
                 ':donor_email' => $is_anonymous ? null : $donor_email,
                 ':amount' => $amount,
@@ -265,6 +362,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                                 <div class="col-lg-12 col-12">
                                     <h5 class="mt-1">Personal Info</h5>
+                                </div>
+
+                                <div class="col-lg-12 col-12 mt-2">
+                                    <label for="cause_id" class="form-label">Cause (optional)</label>
+                                    <select name="cause_id" id="cause_id" class="form-select">
+                                        <option value="">-- Select a cause (optional) --</option>
+                                        <?php foreach ($causes as $c): ?>
+                                            <option value="<?php echo htmlspecialchars($c['cause_id']); ?>"><?php echo htmlspecialchars($c['title']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </div>
 
                                 <div class="col-lg-6 col-12 mt-2">

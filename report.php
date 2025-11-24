@@ -39,32 +39,38 @@ if ($end) {
     $params[':end'] = $end . ' 23:59:59';
 }
 
-// We'll select normalized columns from both tables and union them.
-$selectWeb = "SELECT donation_id AS id, donor_name, donor_email, amount, donation_date, payment_method, frequency, is_anonymous, 'DonationsWeb' AS source FROM DonationsWeb";
-$selectDon = "SELECT donation_id AS id, donor_name, donor_email, amount, donation_date, payment_method, NULL AS frequency, is_anonymous, 'Donations' AS source FROM Donations";
-
-// Check if Donations table exists
-$hasDonations = false;
+// Build SELECTs for existing tables
+$queries = [];
 try {
-    $res = $pdo->query("SHOW TABLES LIKE 'Donations'");
-    if ($res && $res->rowCount() > 0) {
-        $hasDonations = true;
-    }
+    $hasWeb = $pdo->query("SHOW TABLES LIKE 'DonationsWeb'")->rowCount() > 0;
 } catch (PDOException $e) {
-    // ignore
+    $hasWeb = false;
+}
+try {
+    $hasDonations = $pdo->query("SHOW TABLES LIKE 'Donations'")->rowCount() > 0;
+} catch (PDOException $e) {
+    $hasDonations = false;
 }
 
-$queries = [$selectWeb];
-if ($hasDonations) $queries[] = $selectDon;
+if ($hasWeb) {
+    $queries[] = "SELECT donation_id AS id, donor_name, donor_email, amount, donation_date, payment_method, frequency, is_anonymous, NULL AS cause_id, NULL AS cause_title, 'DonationsWeb' AS source FROM DonationsWeb";
+}
+if ($hasDonations) {
+    // join to Causes to get a readable title if available
+    $queries[] = "SELECT d.donation_id AS id, d.donor_name, d.donor_email, d.amount, d.donation_date, d.payment_method, d.frequency, d.is_anonymous, d.cause_id AS cause_id, COALESCE(c.title, '') AS cause_title, 'Donations' AS source FROM Donations d LEFT JOIN Causes c ON d.cause_id = c.cause_id";
+}
 
-$sql = implode(' UNION ALL ', $queries) . $where . ' ORDER BY donation_date DESC';
-
-try {
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll();
-} catch (PDOException $ex) {
-    die('Query error: ' . htmlspecialchars($ex->getMessage()));
+if (empty($queries)) {
+    $rows = [];
+} else {
+    $sql = implode(' UNION ALL ', $queries) . $where . ' ORDER BY donation_date DESC';
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+    } catch (PDOException $ex) {
+        die('Query error: ' . htmlspecialchars($ex->getMessage()));
+    }
 }
 
 // Totals
@@ -78,9 +84,9 @@ if ($export) {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename=donations_report.csv');
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['id','donor_name','donor_email','amount','donation_date','payment_method','frequency','is_anonymous','source']);
+    fputcsv($out, ['id','donor_name','donor_email','amount','donation_date','payment_method','frequency','is_anonymous','cause_id','cause_title','source']);
     foreach ($rows as $r) {
-        fputcsv($out, [$r['id'],$r['donor_name'],$r['donor_email'],$r['amount'],$r['donation_date'],$r['payment_method'],$r['frequency'],$r['is_anonymous'],$r['source']]);
+        fputcsv($out, [$r['id'],$r['donor_name'],$r['donor_email'],$r['amount'],$r['donation_date'],$r['payment_method'],$r['frequency'],$r['is_anonymous'],isset($r['cause_id'])?$r['cause_id']:'',isset($r['cause_title'])?$r['cause_title']:'', $r['source']]);
     }
     fclose($out);
     exit;
@@ -144,6 +150,7 @@ if ($export) {
                     <th>Date</th>
                     <th>Payment</th>
                     <th>Frequency</th>
+                    <th>Cause</th>
                     <th>Anon</th>
                     <th>Source</th>
                 </tr>
@@ -158,6 +165,7 @@ if ($export) {
                         <td><?php echo htmlspecialchars($r['donation_date']); ?></td>
                         <td><?php echo htmlspecialchars($r['payment_method']); ?></td>
                         <td><?php echo htmlspecialchars($r['frequency']); ?></td>
+                        <td><?php echo htmlspecialchars(isset($r['cause_title']) ? $r['cause_title'] : ''); ?></td>
                         <td><?php echo $r['is_anonymous'] ? 'Yes' : 'No'; ?></td>
                         <td><?php echo htmlspecialchars($r['source']); ?></td>
                     </tr>
