@@ -1,0 +1,266 @@
+<?php
+// index.php - homepage with total donated from database
+$dbHost = '127.0.0.1';
+$dbName = 'kindnesscup';
+$dbUser = 'root';
+$dbPass = '';
+
+$total = 0.0;
+$count = 0;
+try {
+    $dsn = "mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4";
+    $pdo = new PDO($dsn, $dbUser, $dbPass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]);
+
+    // DonationsWeb
+    $hasWeb = $pdo->query("SHOW TABLES LIKE 'DonationsWeb'")->rowCount() > 0;
+    if ($hasWeb) {
+        $r = $pdo->query("SELECT COALESCE(SUM(amount),0) AS s, COUNT(*) AS c FROM DonationsWeb")->fetch();
+        $total += (float) $r['s'];
+        $count += (int) $r['c'];
+    }
+
+    // Donations (if exists)
+    $hasDon = $pdo->query("SHOW TABLES LIKE 'Donations'")->rowCount() > 0;
+    if ($hasDon) {
+        $r = $pdo->query("SELECT COALESCE(SUM(amount),0) AS s, COUNT(*) AS c FROM Donations")->fetch();
+        $total += (float) $r['s'];
+        $count += (int) $r['c'];
+    }
+} catch (PDOException $ex) {
+    // on error, leave totals as zero; avoid revealing DB errors on public page
+    $total = 0.0;
+    $count = 0;
+}
+
+$totalFormatted = number_format($total, 2);
+?>
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>Kindnesscup</title>
+
+    <!-- CSS FILES -->
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+
+    <link href="css/bootstrap-icons.css" rel="stylesheet">
+
+    <link href="css/templatemo-kind-heart-charity.css" rel="stylesheet">
+
+</head>
+
+<body id="section_1">
+
+    <header class="site-header">
+        <div class="container">
+            <div class="row">
+
+                <div class="col-lg-8 col-12 d-flex flex-wrap">
+                    <p class="d-flex me-4 mb-0">
+                        <i class="bi-geo-alt me-2"></i>
+                        Bandung, Indonesia
+                    </p>
+
+                    <p class="d-flex mb-0">
+                        <i class="bi-envelope me-2"></i>
+
+                        <a href="mailto:kindnesscup@gmail.com">
+                            kindnesscup@gmail.com
+                        </a>
+                    </p>
+                </div>
+
+                <div class="col-lg-3 col-12 ms-auto d-lg-block d-none">
+                    <ul class="social-icon">
+                        <li class="social-icon-item">
+                            <a href="#" class="social-icon-link bi-twitter"></a>
+                        </li>
+
+                        <li class="social-icon-item">
+                            <a href="#" class="social-icon-link bi-facebook"></a>
+                        </li>
+
+                        <li class="social-icon-item">
+                            <a href="#" class="social-icon-link bi-instagram"></a>
+                        </li>
+
+                        <li class="social-icon-item">
+                            <a href="#" class="social-icon-link bi-youtube"></a>
+                        </li>
+
+                        <li class="social-icon-item">
+                            <a href="#" class="social-icon-link bi-whatsapp"></a>
+                        </li>
+                    </ul>
+                </div>
+
+            </div>
+        </div>
+    </header>
+
+    <nav class="navbar navbar-expand-lg bg-light shadow-lg">
+        <div class="container">
+            <a class="navbar-brand" href="index.php">
+                <img src="images/logo.png" class="logo img-fluid" alt="Kindnesscup">
+                <span>
+                    Kindnesscup
+                    <small>Non-profit Organization</small>
+                </span>
+            </a>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link click-scroll" href="#top">Home</a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link click-scroll" href="#section_2">About</a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link click-scroll" href="#section_3">Causes</a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link click-scroll" href="#section_4">Volunteer</a>
+                    </li>
+
+                    <li class="nav-item dropdown">
+                        <a class="nav-link click-scroll dropdown-toggle" href="#section_5"
+                            id="navbarLightDropdownMenuLink" role="button" data-bs-toggle="dropdown"
+                            aria-expanded="false">News</a>
+
+                        <ul class="dropdown-menu dropdown-menu-light" aria-labelledby="navbarLightDropdownMenuLink">
+                            <li><a class="dropdown-item" href="news.html">News Listing</a></li>
+
+                            <li><a class="dropdown-item" href="news-detail.html">News Detail</a></li>
+                        </ul>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link click-scroll" href="#section_6">Contact</a>
+                    </li>
+
+                    <li class="nav-item ms-3">
+                        <a class="nav-link" href="report.php">Reports</a>
+                    </li>
+                    <li class="nav-item ms-3">
+                        <a class="nav-link custom-btn custom-border-btn btn" href="donate.php">Donate</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+
+        <section class="hero-section hero-section-full-height">
+            <div class="container-fluid">
+                <div class="row">
+
+                    <div class="col-lg-12 col-12 p-0">
+                        <div id="hero-slide" class="carousel carousel-fade slide" data-bs-ride="carousel">
+                            <div class="carousel-inner">
+                                <div class="carousel-item active">
+                                    <img src="images/slide/volunteer-helping-with-donation-box.jpg"
+                                        class="carousel-image img-fluid" alt="...">
+
+                                    <div class="carousel-caption d-flex flex-column justify-content-end">
+                                        <h1>be a Kind Heart</h1>
+
+                                        <p>Professional charity theme based on Bootstrap 5.2.2</p>
+                                    </div>
+                                </div>
+
+                                <div class="carousel-item">
+                                    <img src="images/slide/volunteer-selecting-organizing-clothes-donations-charity.jpg"
+                                        class="carousel-image img-fluid" alt="...">
+
+                                    <div class="carousel-caption d-flex flex-column justify-content-end">
+                                        <h1>Non-profit</h1>
+
+                                        <p>You can support us to grow more</p>
+                                    </div>
+                                </div>
+
+                                <div class="carousel-item">
+                                    <img src="images/slide/medium-shot-people-collecting-donations.jpg"
+                                        class="carousel-image img-fluid" alt="...">
+
+                                    <div class="carousel-caption d-flex flex-column justify-content-end">
+                                        <h1>Humanity</h1>
+
+                                        <p>Please tell your friends about our website</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button class="carousel-control-prev" type="button" data-bs-target="#hero-slide"
+                                data-bs-slide="prev">
+                                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                <span class="visually-hidden">Previous</span>
+                            </button>
+
+                            <button class="carousel-control-next" type="button" data-bs-target="#hero-slide"
+                                data-bs-slide="next">
+                                <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                <span class="visually-hidden">Next</span>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+
+        <section class="section-padding">
+            <div class="container">
+                <div class="row">
+
+                    <div class="col-lg-12 col-12 text-center mb-4">
+                        <div class="p-3 bg-light rounded">
+                            <h5 class="mb-1">Total donated so far</h5>
+                            <h2 class="mb-0">$<?php echo $totalFormatted; ?></h2>
+                            <small class="text-muted"><?php echo (int)$count; ?> donations recorded</small>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-10 col-12 text-center mx-auto">
+                        <h2 class="mb-5">Welcome to Kindnesscup</h2>
+                    </div>
+
+                    <div class="col-lg-3 col-md-6 col-12 mb-4 mb-lg-0">
+                        <div class="featured-block d-flex justify-content-center align-items-center">
+                            <a href="donate.php" class="d-block">
+                                <img src="images/icons/hands.png" class="featured-block-image img-fluid" alt="">
+
+                                <p class="featured-block-text">Become a <strong>volunteer</strong></p>
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-3 col-md-6 col-12 mb-4 mb-lg-0 mb-md-4">
+                        <div class="featured-block d-flex justify-content-center align-items-center">
+                            <a href="donate.php" class="d-block">
+                                <img src="images/icons/heart.png" class="featured-block-image img-fluid" alt="">
+
+                                <p class="featured-block-text"><strong>Caring</strong> Earth</p>
+                            </a>
+                        </div>
+                    </div>
